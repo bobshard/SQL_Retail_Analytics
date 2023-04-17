@@ -194,28 +194,20 @@ SELECT customer_id,
        part2_get_average_check_by_id(customer_id) AS averge_check
 FROM personal_information
 ORDER BY averge_check DESC;
-
+CREATE INDEX idx_av_ch ON part2_view_average_check (customer_id, averge_check);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS part2_view_average_check_segment AS
 SELECT customer_id,
        part2_segment_average_check(customer_id) AS segment
 FROM personal_information;
-
+CREATE INDEX idx_av_ch_seg ON part2_view_average_check_segment (customer_id, segment);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS part2_view_common AS
 SELECT customer_id,
        part2_get_day_inactive_by_id(customer_id) AS day_inactive,
        part2_segment_average_check(customer_id)  AS average_check_segment
 FROM personal_information;
-
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS min_max_data AS
-SELECT max(to_timestamp(transaction_datetime, 'DD-MM-YYYY')::DATE) AS max_date,
-       min(to_timestamp(transaction_datetime, 'DD-MM-YYYY')::DATE) AS min_date
-FROM transactions
-WHERE to_timestamp(transaction_datetime, 'DD-MM-YYYY')::DATE <
-      (SELECT to_timestamp(analysis_formation, 'DD-MM-YYYY') FROM date_of_analysis_formation);
-
+CREATE INDEX idx_com ON part2_view_common (customer_id, average_check_segment);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS part2_view_intensive_transaction AS
 SELECT customer_id,
@@ -308,9 +300,9 @@ SELECT personal_information.customer_id,
        t.transaction_id,
        to_timestamp(t.transaction_datetime, 'DD.MM.YYYY HH24:MI:SS')::TIMESTAMP AS transaction_datetime,
        group_id,
-       sum(sku_amount * s.sku_purchase_price)                                   AS group_cost,
-       sum(sku_summ)                                                            AS group_summ,
-       sum(sku_summ_paid)                                                       AS group_summ_paid
+       sum(sku_purchase_price * sku_amount)                                   AS group_cost,
+       avg(sku_summ)                                                            AS group_summ,
+       avg(sku_summ_paid)                                                       AS group_summ_paid
 FROM personal_information
          LEFT JOIN cards c ON personal_information.customer_id = c.customer_id
          LEFT JOIN transactions t ON c.customer_card_id = t.customer_card_id
@@ -321,6 +313,15 @@ WHERE (SELECT to_timestamp(analysis_formation, 'DD.MM.YYYY HH24:MI:SS')::TIMESTA
       to_timestamp(t.transaction_datetime, 'DD.MM.YYYY HH24:MI:SS')::TIMESTAMP
 GROUP BY personal_information.customer_id, t.transaction_id, group_id
 ORDER BY customer_id, group_id;
+REFRESH MATERIALIZED VIEW purchase_history;
+SELECT customer_id, group_id, c.transaction_id, transaction_datetime, c.sku_id, sku_summ, sku_summ_paid
+FROM cards
+         JOIN transactions t on cards.customer_card_id = t.customer_card_id
+         JOIN checks c on t.transaction_id = c.transaction_id
+         JOIN product_grid pg on c.sku_id = pg.sku_id
+WHERE customer_id = 3
+  AND group_id = 1
+ORDER BY 1, 2;
 
 CREATE OR REPLACE VIEW view_min_discount AS
 SELECT checks.transaction_id, group_id, min(sku_summ_discount / sku_summ) * 100 AS min_disc
@@ -419,7 +420,7 @@ BEGIN
                                                             transaction_datetime::DATE, 0) -
                                                    (p.group_frequency)) /
                                                   (group_frequency) END) AS tmp
-                        FROM purchase_history
+                        FROM (SELECT * FROM purchase_history ORDER BY transaction_datetime) purchase_history
                                  LEFT JOIN periods p
                                            ON purchase_history.customer_id = p.customer_id AND
                                               p.group_id = purchase_history.group_id
@@ -538,7 +539,7 @@ CREATE OR REPLACE FUNCTION part2_group_average_discount(_customer_id BIGINT, _gr
 AS
 $$
 BEGIN
-    RETURN (SELECT sum(group_summ) / sum(purchase_history.group_summ_paid)
+    RETURN (SELECT sum(purchase_history.group_summ_paid) / sum(group_summ)
             FROM purchase_history
             WHERE customer_id = _customer_id
               AND group_id = _group_id
