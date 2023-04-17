@@ -36,7 +36,7 @@ DECLARE
     count_customers INTEGER = (SELECT count(customer_id)
                                FROM personal_information);
     high_segment    INTEGER = count_customers * 0.1;
-    medium_segment  INTEGER = count_customers * 0.25;
+    medium_segment  INTEGER = count_customers * 0.35;
 BEGIN
     IF id IN (SELECT customer_id FROM part2_view_average_check LIMIT high_segment) THEN
         RETURN 'High';
@@ -58,17 +58,21 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION part2_intensive_transaction(_id BIGINT) RETURNS NUMERIC AS
 $$
 DECLARE
-    max_date              DATE   = (SELECT max_date
-                                    FROM min_max_data);
-    min_date              DATE   = (SELECT min_date
-                                    FROM min_max_data);
+    max_date              DATE   = (SELECT max(to_timestamp(transaction_datetime, 'DD.MM.YYYY HH24:MI:SS'))
+                                    FROM cards c
+                                             JOIN transactions t on c.customer_card_id = t.customer_card_id
+                                    where c.customer_id = _id);
+    min_date              DATE   = (SELECT min(to_timestamp(transaction_datetime, 'DD.MM.YYYY HH24:MI:SS'))
+                                    FROM cards c
+                                             JOIN transactions t on c.customer_card_id = t.customer_card_id
+                                    where c.customer_id = _id);
     intensive_transaction NUMERIC;
     amount_transact       BIGINT = (SELECT count(transaction_id)
                                     FROM transactions
                                     WHERE customer_card_id IN (SELECT * FROM part2_get_cards_by_id(_id)));
 BEGIN
     IF amount_transact != 0 THEN
-        intensive_transaction = (max_date - min_date) / amount_transact;
+        intensive_transaction = (max_date - min_date)::NUMERIC / amount_transact;
         IF intensive_transaction IS NOT NULL THEN
             RETURN intensive_transaction;
         END IF;
@@ -78,19 +82,12 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS min_max_data AS
-SELECT max(to_timestamp(transaction_datetime, 'DD-MM-YYYY H24:MI:SS')::DATE) AS max_date,
-       min(to_timestamp(transaction_datetime, 'DD-MM-YYYY H24:MI:SS')::DATE) AS min_date
-FROM transactions
-WHERE to_timestamp(transaction_datetime, 'DD-MM-YYYY H24:MI:SS')::DATE <
-      (SELECT to_timestamp(analysis_formation, 'DD-MM-YYYY H24:MI:SS') FROM date_of_analysis_formation);
-
-
 CREATE MATERIALIZED VIEW IF NOT EXISTS part2_view_intensive_transaction AS
 SELECT customer_id,
        part2_intensive_transaction(customer_id) AS intensive_transaction
 FROM personal_information
-ORDER BY intensive_transaction DESC;
+ORDER BY intensive_transaction;
+
 
 CREATE OR REPLACE FUNCTION part2_intensive_segment_by_id(id BIGINT) RETURNS VARCHAR AS
 $$
@@ -98,7 +95,7 @@ DECLARE
     count_customers INTEGER = (SELECT count(customer_id)
                                FROM personal_information);
     high_segment    INTEGER = count_customers * 0.1;
-    medium_segment  INTEGER = count_customers * 0.25;
+    medium_segment  INTEGER = count_customers * 0.35;
 BEGIN
     IF id IN (SELECT customer_id FROM part2_view_intensive_transaction LIMIT high_segment) THEN
         RETURN 'Often';
@@ -231,7 +228,7 @@ SELECT customer_id,
        part2_decision_churn_segment(customer_id) AS segment
 FROM personal_information;
 
-CREATE MATERIALIZED VIEW share_tran AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS share_tran AS
 SELECT customer_id, transaction_store_id, share, count(share) OVER (PARTITION BY customer_id,share) AS count_share
 FROM (SELECT DISTINCT personal_information.customer_id,
                       t.transaction_store_id,
@@ -245,7 +242,7 @@ FROM (SELECT DISTINCT personal_information.customer_id,
       ORDER BY 1, 2) AS tmp;
 CREATE INDEX idx_share_tran ON share_tran (customer_id, transaction_store_id, share);
 
-CREATE MATERIALIZED VIEW last_three_tran AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS last_three_tran AS
 SELECT customer_id,
        transaction_datetime,
        transaction_store_id,
@@ -591,4 +588,17 @@ SELECT *
 FROM groups
 WHERE customer_id = 1
   AND group_id = 3;
+
+
+--
+
+SELECT p.customer_id, sum(transaction_summ), count(p.customer_id)
+FROM personal_information p
+         JOIN cards c on p.customer_id = c.customer_id
+         JOIN transactions t on c.customer_card_id = t.customer_card_id
+group by p.customer_id;
+
+Select to_timestamp(transaction_datetime, 'DD.MM.YYYY HH24:MI:SS')
+from transactions;
+
 
