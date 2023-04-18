@@ -186,9 +186,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Helpers Views
-
-
 CREATE MATERIALIZED VIEW IF NOT EXISTS part2_view_average_check AS
 SELECT customer_id,
        part2_get_average_check_by_id(customer_id) AS averge_check

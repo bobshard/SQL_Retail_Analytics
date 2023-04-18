@@ -1,12 +1,12 @@
-CREATE OR REPLACE FUNCTION part5_increase_frequency(first_date_p DATE, last_date_p DATE,
+CREATE OR REPLACE FUNCTION part5_increase_frequency(first_date_p TIMESTAMP, last_date_p TIMESTAMP,
                                                     amount_tr INTEGER,
                                                     max_churn_rate NUMERIC, max_discount_share NUMERIC, margin NUMERIC
 )
     RETURNS TABLE
             (
                 customer_id                 BIGINT,
-                Start_Date                  DATE,
-                End_Date                    DATE,
+                Start_Date                  TIMESTAMP,
+                End_Date                    TIMESTAMP,
                 Required_Transactions_Count NUMERIC,
                 Group_Name                  VARCHAR,
                 Offer_Discount_Depth        NUMERIC
@@ -14,14 +14,16 @@ CREATE OR REPLACE FUNCTION part5_increase_frequency(first_date_p DATE, last_date
 AS
 $$
 DECLARE
-    amount_day INTEGER = (last_date_p - first_date_p);
+    amount_day INTEGER = (last_date_p::DATE - first_date_p::DATE);
 BEGIN
     RETURN QUERY (SELECT pe.customer_id,
                          first_date_p,
                          last_date_p,
                          part5_target_value_transaction(pe.customer_id, amount_day, amount_tr),
-                         part5_group_name(pe.customer_id, max_churn_rate, max_discount_share , margin),
-                         part5_offer_disc(pe.customer_id, max_churn_rate, max_discount_share, margin)
+                         part5_group_name(pe.customer_id, max_churn_rate, max_discount_share::NUMERIC / 100,
+                                          margin::NUMERIC / 100),
+                         part5_offer_disc(pe.customer_id, max_churn_rate, max_discount_share::NUMERIC / 100,
+                                          margin::NUMERIC / 100)
                   FROM personal_information pe);
 END ;
 $$ LANGUAGE plpgsql;
@@ -62,9 +64,9 @@ BEGIN
             LIMIT 1 OFFSET i - 1
             INTO r;
             IF r.group_margin IS NOT NULL AND r.group_minimum_discount IS NOT NULL THEN
-                _margin = avg(r.group_margin) * margin;
-                IF _margin > ceil(r.group_minimum_discount / 5) * 5 THEN
-                    RETURN ceil(r.group_minimum_discount / 5) * 5;
+                _margin = r.group_margin * margin;
+                IF _margin > ceil((r.group_minimum_discount * 100 / 5) * 5) THEN
+                    RETURN ceil(r.group_minimum_discount * 100 / 5) * 5;
                 END IF;
             END IF;
         END LOOP;
@@ -95,7 +97,7 @@ BEGIN
             INTO r;
             IF r.group_margin IS NOT NULL AND r.group_minimum_discount IS NOT NULL THEN
                 _margin = r.group_margin * margin;
-                IF _margin > ceil(r.group_minimum_discount / 5) * 5 THEN
+                IF _margin > ceil((r.group_minimum_discount * 100 / 5) * 5) THEN
                     RETURN (SELECT group_name FROM sku_group where group_id = r.group_id);
                 END IF;
             END IF;
@@ -106,4 +108,4 @@ $$ LANGUAGE plpgsql;
 
 
 SELECT *
-FROM part5_increase_frequency('2022-08-18', '2022-08-18', 1, 3, 70, 30);
+FROM part5_increase_frequency('2022-08-18 00:00:00', '2022-08-18 00:00:00', 1, 3, 70, 30);

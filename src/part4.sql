@@ -1,5 +1,5 @@
-CREATE OR REPLACE FUNCTION part2_prjecting_func_1(_customer_id BIGINT, begin_date TIMESTAMP, finish_date TIMESTAMP,
-                                                  c_average_check NUMERIC) RETURNS NUMERIC AS
+CREATE OR REPLACE FUNCTION part4_average_check_1(_customer_id BIGINT, begin_date TIMESTAMP, finish_date TIMESTAMP,
+                                                 c_average_check NUMERIC) RETURNS NUMERIC AS
 $$
 DECLARE
     date_of_analysis TIMESTAMP = (SELECT to_timestamp(analysis_formation, 'DD.MM.YYYY HH24:MI:SS')
@@ -25,8 +25,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION part2_prjecting_func_2(_customer_id BIGINT, count_transaction INT,
-                                                  c_average_check NUMERIC) RETURNS NUMERIC AS
+CREATE OR REPLACE FUNCTION part4_average_check_2(_customer_id BIGINT, count_transaction INT,
+                                                 c_average_check NUMERIC) RETURNS NUMERIC AS
 $$
 BEGIN
     RETURN (WITH tr AS (SELECT *
@@ -41,8 +41,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION part2_prjecting_func_3(_customer_id BIGINT, max_churn_index NUMERIC,
-                                                  max_discount_rate NUMERIC, margin NUMERIC) RETURNS NUMERIC AS
+CREATE OR REPLACE FUNCTION part4_discount(_customer_id BIGINT, max_churn_index NUMERIC,
+                                          max_discount_rate NUMERIC, margin NUMERIC) RETURNS NUMERIC AS
 $$
 DECLARE
     len     INTEGER = (SELECT count(*)
@@ -64,8 +64,8 @@ BEGIN
             INTO r;
             IF r.group_margin IS NOT NULL AND r.group_minimum_discount IS NOT NULL THEN
                 _margin = r.group_margin * margin;
-                IF _margin > ceil((r.group_minimum_discount / 5) * 5)/100 THEN
-                    RETURN ceil(r.group_minimum_discount / 5) * 5;
+                IF _margin > ceil((r.group_minimum_discount * 100 / 5) * 5) THEN
+                    RETURN ceil(r.group_minimum_discount * 100 / 5) * 5;
                 END IF;
             END IF;
         END LOOP;
@@ -73,13 +73,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION part2_prjecting_func_3_1(_customer_id BIGINT, max_churn_index NUMERIC,
-                                                    max_discount_rate NUMERIC, margin NUMERIC) RETURNS VARCHAR AS
+CREATE OR REPLACE FUNCTION part4_name(_customer_id BIGINT, max_churn_index NUMERIC,
+                                      max_discount_rate NUMERIC, margin NUMERIC) RETURNS VARCHAR AS
 $$
 DECLARE
     len     INTEGER = (SELECT count(*)
                        FROM groups
-                       WHERE customer_id = _customer_id); --_customer_id;
+                       WHERE customer_id = _customer_id);
     i       INT     = 1;
     r       RECORD;
     _margin NUMERIC;
@@ -96,7 +96,7 @@ BEGIN
             INTO r;
             IF r.group_margin IS NOT NULL AND r.group_minimum_discount IS NOT NULL THEN
                 _margin = r.group_margin * margin;
-                IF _margin > ceil((r.group_minimum_discount / 5) * 5)/100 THEN
+                IF _margin > ceil((r.group_minimum_discount * 100 / 5) * 5) THEN
                     RETURN (SELECT group_name FROM sku_group where group_id = r.group_id);
                 END IF;
             END IF;
@@ -105,14 +105,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION part2_get_margin2(met_average_check INTEGER,
-                                             first_date_p DATE,
-                                             last_date_p DATE,
-                                             amount_tr INTEGER,
-                                             c_aver_check NUMERIC,
-                                             max_churn_rate NUMERIC,
-                                             max_share_tr NUMERIC,
-                                             ad_share_mar NUMERIC)
+CREATE OR REPLACE FUNCTION part4_get_margin(met_average_check INTEGER,
+                                            first_date_p DATE,
+                                            last_date_p DATE,
+                                            amount_tr INTEGER,
+                                            c_aver_check NUMERIC,
+                                            max_churn_rate NUMERIC,
+                                            max_share_tr NUMERIC,
+                                            ad_share_mar NUMERIC)
     RETURNS TABLE
             (
                 customer_id            BIGINT,
@@ -128,23 +128,23 @@ DECLARE
 BEGIN
     IF met_average_check = 1 THEN
         RETURN QUERY (SELECT pe.customer_id,
-                             part2_prjecting_func_1(pe.customer_id, begin_datetime, finish_datetime, c_aver_check),
-                             part2_prjecting_func_3_1(pe.customer_id, max_churn_rate, max_share_tr / 100,
-                                                      ad_share_mar / 100),
-                             part2_prjecting_func_3(pe.customer_id, max_churn_rate, max_share_tr / 100,
-                                                    ad_share_mar / 100)
+                             part4_average_check_1(pe.customer_id, begin_datetime, finish_datetime, c_aver_check),
+                             part4_name(pe.customer_id, max_churn_rate, max_share_tr::NUMERIC / 100,
+                                        ad_share_mar::NUMERIC / 100),
+                             part4_discount(pe.customer_id, max_churn_rate, max_share_tr::NUMERIC / 100,
+                                            ad_share_mar::NUMERIC / 100)
                       FROM personal_information pe);
     ELSIF met_average_check = 2 THEN
         RETURN QUERY (SELECT pe.customer_id,
-                             part2_prjecting_func_2(pe.customer_id, amount_tr, c_aver_check),
-                             part2_prjecting_func_3_1(pe.customer_id, max_churn_rate, max_share_tr / 100,
-                                                      ad_share_mar / 100),
-                             part2_prjecting_func_3(pe.customer_id, max_churn_rate, max_share_tr / 100,
-                                                    ad_share_mar / 100)
+                             part4_average_check_2(pe.customer_id, amount_tr, c_aver_check),
+                             part4_name(pe.customer_id, max_churn_rate, max_share_tr::NUMERIC / 100,
+                                        ad_share_mar::NUMERIC / 100),
+                             part4_discount(pe.customer_id, max_churn_rate, max_share_tr::NUMERIC / 100,
+                                            ad_share_mar::NUMERIC / 100)
                       FROM personal_information pe);
     END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 SELECT *
-FROM part2_get_margin2(2, '2021-09-02', '2023-01-01', 100, 1.15, 3, 70, 30);
+FROM part4_get_margin(2, '2021-09-02', '2023-01-01', 100, 1.15, 3, 70, 30);
