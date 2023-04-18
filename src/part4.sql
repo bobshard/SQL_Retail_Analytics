@@ -24,7 +24,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- SELECT part2_prjecting_func_1(36, '2018-01-12', '2020-04-03', 10);
 
 CREATE OR REPLACE FUNCTION part2_prjecting_func_2(_customer_id BIGINT, count_transaction INT,
                                                   c_average_check NUMERIC) RETURNS NUMERIC AS
@@ -41,7 +40,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- SELECT part2_prjecting_func_2(16, 2, 1);
 
 CREATE OR REPLACE FUNCTION part2_prjecting_func_3(_customer_id BIGINT, max_churn_index NUMERIC,
                                                   max_discount_rate NUMERIC, margin NUMERIC) RETURNS NUMERIC AS
@@ -66,7 +64,7 @@ BEGIN
             INTO r;
             IF r.group_margin IS NOT NULL AND r.group_minimum_discount IS NOT NULL THEN
                 _margin = r.group_margin * margin;
-                IF _margin > ceil(r.group_minimum_discount / 5) * 5 THEN
+                IF _margin > ceil((r.group_minimum_discount / 5) * 5)/100 THEN
                     RETURN ceil(r.group_minimum_discount / 5) * 5;
                 END IF;
             END IF;
@@ -98,7 +96,7 @@ BEGIN
             INTO r;
             IF r.group_margin IS NOT NULL AND r.group_minimum_discount IS NOT NULL THEN
                 _margin = r.group_margin * margin;
-                IF _margin > ceil(r.group_minimum_discount / 5) * 5 THEN
+                IF _margin > ceil((r.group_minimum_discount / 5) * 5)/100 THEN
                     RETURN (SELECT group_name FROM sku_group where group_id = r.group_id);
                 END IF;
             END IF;

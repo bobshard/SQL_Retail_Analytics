@@ -20,8 +20,8 @@ BEGIN
                          first_date_p,
                          last_date_p,
                          part5_target_value_transaction(pe.customer_id, amount_day, amount_tr),
-                         part5_group_name(pe.customer_id, max_churn_rate, max_discount_share / 100, margin / 100),
-                         part5_offer_disc(pe.customer_id, max_churn_rate, max_discount_share / 100, margin / 100)
+                         part5_group_name(pe.customer_id, max_churn_rate, max_discount_share , margin),
+                         part5_offer_disc(pe.customer_id, max_churn_rate, max_discount_share, margin)
                   FROM personal_information pe);
 END ;
 $$ LANGUAGE plpgsql;
@@ -62,7 +62,7 @@ BEGIN
             LIMIT 1 OFFSET i - 1
             INTO r;
             IF r.group_margin IS NOT NULL AND r.group_minimum_discount IS NOT NULL THEN
-                _margin = r.group_margin * margin;
+                _margin = avg(r.group_margin) * margin;
                 IF _margin > ceil(r.group_minimum_discount / 5) * 5 THEN
                     RETURN ceil(r.group_minimum_discount / 5) * 5;
                 END IF;

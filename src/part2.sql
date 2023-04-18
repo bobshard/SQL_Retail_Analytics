@@ -296,35 +296,35 @@ CREATE INDEX idx_customers ON customers (customer_id, Customer_Primary_Store);
 
 
 CREATE MATERIALIZED VIEW purchase_history AS
-SELECT personal_information.customer_id,
-       t.transaction_id,
+SELECT c.customer_id,
+       ch.transaction_id,
        to_timestamp(t.transaction_datetime, 'DD.MM.YYYY HH24:MI:SS')::TIMESTAMP AS transaction_datetime,
        group_id,
-       sum(sku_purchase_price * sku_amount)                                   AS group_cost,
-       avg(sku_summ)                                                            AS group_summ,
-       avg(sku_summ_paid)                                                       AS group_summ_paid
-FROM personal_information
-         LEFT JOIN cards c ON personal_information.customer_id = c.customer_id
-         LEFT JOIN transactions t ON c.customer_card_id = t.customer_card_id
-         LEFT JOIN checks ch ON t.transaction_id = ch.transaction_id
-         LEFT JOIN product_grid pg ON ch.sku_id = pg.sku_id
-         LEFT JOIN stores s ON pg.sku_id = s.sku_id
+       sum(sku_purchase_price * sku_amount)                                     AS group_cost,
+       sum(sku_summ)                                                            AS group_summ,
+       sum(sku_summ_paid)                                                       AS group_summ_paid
+FROM cards c
+         JOIN transactions t ON c.customer_card_id = t.customer_card_id
+         JOIN checks ch ON t.transaction_id = ch.transaction_id
+         JOIN product_grid pg ON ch.sku_id = pg.sku_id
+         JOIN stores s ON pg.sku_id = s.sku_id AND s.transaction_store_id = t.transaction_store_id
 WHERE (SELECT to_timestamp(analysis_formation, 'DD.MM.YYYY HH24:MI:SS')::TIMESTAMP FROM date_of_analysis_formation) >=
       to_timestamp(t.transaction_datetime, 'DD.MM.YYYY HH24:MI:SS')::TIMESTAMP
-GROUP BY personal_information.customer_id, t.transaction_id, group_id
-ORDER BY customer_id, group_id;
-REFRESH MATERIALIZED VIEW purchase_history;
-SELECT customer_id, group_id, c.transaction_id, transaction_datetime, c.sku_id, sku_summ, sku_summ_paid
+GROUP BY c.customer_id, ch.transaction_id, t.transaction_datetime, group_id
+ORDER BY customer_id, group_id, transaction_id;
+
+
+SELECT DISTINCT customer_id, group_id, c.transaction_id, transaction_datetime, sum(sku_summ_paid), sum(sku_summ)
 FROM cards
          JOIN transactions t on cards.customer_card_id = t.customer_card_id
          JOIN checks c on t.transaction_id = c.transaction_id
          JOIN product_grid pg on c.sku_id = pg.sku_id
-WHERE customer_id = 3
-  AND group_id = 1
+         JOIN stores s on pg.sku_id = s.sku_id AND s.transaction_store_id = t.transaction_store_id
+GROUP BY 1, 2, 3, 4
 ORDER BY 1, 2;
 
 CREATE OR REPLACE VIEW view_min_discount AS
-SELECT checks.transaction_id, group_id, min(sku_summ_discount / sku_summ) * 100 AS min_disc
+SELECT checks.transaction_id, group_id, min(sku_summ_discount / sku_summ) AS min_disc
 FROM checks
          JOIN product_grid pg ON pg.sku_id = checks.sku_id
 WHERE sku_summ_discount > 0
@@ -436,14 +436,15 @@ CREATE OR REPLACE FUNCTION part2_churn_rate(_customer_id BIGINT, _group_id BIGIN
 AS
 $$
 DECLARE
-    churn_rate NUMERIC = (SELECT ((SELECT to_timestamp(analysis_formation, 'DD.MM.YYYY HH24:MI:SS')::DATE
-                                   FROM date_of_analysis_formation) -
-                                  max(transaction_datetime)::DATE) / avg(group_frequency)
-                          FROM purchase_history
-                                   LEFT JOIN periods p ON purchase_history.customer_id = p.customer_id AND
-                                                          p.group_id = purchase_history.group_id
-                          WHERE purchase_history.customer_id = _customer_id
-                            AND purchase_history.group_id = _group_id);
+    churn_rate NUMERIC = (SELECT (SELECT (SELECT to_timestamp(analysis_formation, 'DD.MM.YYYY HH24:MI:SS')::DATE
+                                          FROM date_of_analysis_formation) -
+                                         max(transaction_datetime)::DATE
+                                  FROM purchase_history
+                                  WHERE purchase_history.customer_id = _customer_id
+                                    AND purchase_history.group_id = _group_id) / group_frequency
+                          FROM periods
+                          WHERE periods.customer_id = _customer_id
+                            AND periods.group_id = _group_id);
 BEGIN
     RETURN churn_rate ;
 END;
@@ -539,7 +540,7 @@ CREATE OR REPLACE FUNCTION part2_group_average_discount(_customer_id BIGINT, _gr
 AS
 $$
 BEGIN
-    RETURN (SELECT sum(purchase_history.group_summ_paid) / sum(group_summ)
+    RETURN (SELECT avg(purchase_history.group_summ_paid) / avg(group_summ)
             FROM purchase_history
             WHERE customer_id = _customer_id
               AND group_id = _group_id

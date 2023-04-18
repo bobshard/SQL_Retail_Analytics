@@ -81,14 +81,14 @@ BEGIN
               g AS (SELECT customer_id,
                            sku_name,
                            delta * max_margin_rate / sku_retail_price    AS tttmp,
-                           ceil(group_minimum_discount::NUMERIC / 5) * 5 AS disc
+                           ceil(group_minimum_discount::NUMERIC*100 / 5) * 5 AS disc
                     FROM f
                     WHERE value <= max_rate_SKU),
               h AS (SELECT DISTINCT customer_id,
                                     sku_name,
                                     disc
                     FROM g
-                    WHERE tttmp >= disc)
+                    WHERE tttmp*100 >= disc)
          SELECT *
          FROM h);
 END;
